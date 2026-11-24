@@ -5,16 +5,199 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Estructura del Contenido</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #f8f9fa; }
-    iframe { width: 100%; height: 100dvh; border: none; display: block; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; margin: 0; background-color: #f8f9fa; color: #333; }
+    .contenedor { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+
+    /* Estilos del título y la descripción */
+    h2 { color: #1a73e8; margin-top: 0; margin-bottom: 5px; }
+    .descripcion { color: #5f6368; font-size: 14.5px; margin-top: 0; border-bottom: 2px solid #f1f3f4; padding-bottom: 15px; margin-bottom: 20px; line-height: 1.5; }
+
+    /* Estilos del árbol desplegable */
+    ul { list-style-type: none; padding-left: 25px; border-left: 1px dashed #ccc; margin-top: 5px; }
+    li { margin: 8px 0; }
+
+    .carpeta, .archivo { font-weight: 500; display: inline-flex; align-items: flex-start; gap: 8px; user-select: none; padding: 4px 8px; border-radius: 4px; transition: background 0.2s; text-decoration: none; color: #333; word-break: break-word; }
+    .carpeta { cursor: pointer; }
+    .archivo { cursor: pointer; font-weight: 400; }
+
+    .carpeta:hover, .archivo:hover { background-color: #f1f3f4; color: #1a73e8; }
+
+    .carpeta::before { content: '📁'; font-size: 1.2em; flex-shrink: 0; }
+    .carpeta.abierta::before { content: '📂'; }
+
+    /* Iconos para identificar los archivos visualmente */
+    .archivo::before { content: '📄'; font-size: 1.2em; flex-shrink: 0; }
+    .archivo.video::before { content: '🎥'; }
+    .archivo.pdf::before { content: '📕'; }
+    .archivo.imagen::before { content: '🖼️'; }
+    .archivo.audio::before { content: '🎵'; }
+
+    .estado { color: #888; font-size: 0.85em; margin-left: 10px; font-style: italic; }
+    .error { color: #d93025; font-size: 0.9em; margin-left: 10px; }
+
+    @media (max-width: 600px) {
+      body { padding: 10px; }
+      .contenedor { padding: 16px; }
+      ul { padding-left: 14px; }
+    }
   </style>
 </head>
 <body>
-  <iframe
-    src="https://script.google.com/macros/s/AKfycbx6SIyTD8Hpxx-jyRSCrxMJuMQwONQ_SSVU50bZtJRZ_hV0hqKJVJ3msum6fdOty4oG/exec"
-    title="Estructura del Contenido"
-    allowfullscreen>
-  </iframe>
+
+  <div class="contenedor">
+    <h2>ESTRUCTURA DEL CONTENIDO</h2>
+    <p class="descripcion">Este visor muestra la estructura completa de carpetas, subcarpetas y archivos del Megapack.</p>
+
+    <div id="arbol-carpetas">
+      <span class="estado" id="mensaje-inicial">Conectando con Google Drive... ⏳</span>
+    </div>
+  </div>
+
+  <script>
+    // PEGA AQUÍ LA URL DE TU IMPLEMENTACIÓN (terminada en /exec, sin /u/2/)
+    const API_URL = "PEGA_AQUI_TU_URL_EXEC";
+
+    async function consultarAPI(parametros) {
+      const url = API_URL + "?" + new URLSearchParams(parametros).toString();
+      const res = await fetch(url, {
+        method: "GET",
+        credentials: "omit",
+        redirect: "follow"
+      });
+      if (!res.ok) {
+        throw new Error("HTTP " + res.status);
+      }
+      return await res.json();
+    }
+
+    window.onload = async function() {
+      const contenedor = document.getElementById('arbol-carpetas');
+      try {
+        const raiz = await consultarAPI({ accion: 'raiz' });
+        if (raiz.error) throw new Error(raiz.error);
+
+        contenedor.innerHTML = '';
+
+        const ulRaiz = document.createElement('ul');
+        ulRaiz.style.borderLeft = 'none';
+        ulRaiz.style.paddingLeft = '0';
+
+        const li = document.createElement('li');
+        const span = document.createElement('span');
+        span.className = 'carpeta abierta';
+        span.textContent = raiz.nombre;
+
+        li.appendChild(span);
+        ulRaiz.appendChild(li);
+        contenedor.appendChild(ulRaiz);
+
+        cargarContenido(span, raiz.id, li);
+
+        span.onclick = function() { alternarVisibilidad(span); };
+      } catch (err) {
+        contenedor.innerHTML = '<span class="error">No se pudo conectar con Google Drive. Verifica la URL de la API.</span>';
+        console.error(err);
+      }
+    };
+
+    async function cargarContenido(span, id, li) {
+      if (li.dataset.cargando === 'true' || li.dataset.cargado === 'true') return;
+      li.dataset.cargando = 'true';
+
+      const cargando = document.createElement('span');
+      cargando.className = 'estado';
+      cargando.textContent = 'Cargando... ⏳';
+      li.appendChild(cargando);
+
+      try {
+        const respuesta = await consultarAPI({ accion: 'contenido', id: id });
+        li.removeChild(cargando);
+        li.dataset.cargando = 'false';
+
+        if (!Array.isArray(respuesta)) {
+          const msgError = document.createElement('span');
+          msgError.className = 'error';
+          msgError.textContent = respuesta.error || 'Error al leer esta carpeta.';
+          li.appendChild(msgError);
+          return;
+        }
+
+        li.dataset.cargado = 'true';
+
+        if (respuesta.length === 0) {
+          const vacia = document.createElement('span');
+          vacia.className = 'estado';
+          vacia.textContent = '(Carpeta vacía)';
+          li.appendChild(vacia);
+          return;
+        }
+
+        const ul = document.createElement('ul');
+        respuesta.forEach(function(item) {
+          const subLi = document.createElement('li');
+
+          if (item.tipo === 'carpeta') {
+            const subSpan = document.createElement('span');
+            subSpan.className = 'carpeta';
+            subSpan.textContent = item.nombre;
+
+            subSpan.onclick = function(e) {
+              e.stopPropagation();
+              if (subLi.dataset.cargado === 'true') {
+                alternarVisibilidad(subSpan);
+              } else {
+                subSpan.classList.add('abierta');
+                cargarContenido(subSpan, item.id, subLi);
+              }
+            };
+
+            subLi.appendChild(subSpan);
+          } else {
+            const enlace = document.createElement('a');
+            enlace.className = 'archivo';
+            enlace.textContent = item.nombre;
+            enlace.href = item.url;
+            enlace.target = '_blank';
+            enlace.rel = 'noopener noreferrer';
+
+            const mime = item.mimeType || '';
+            if (mime.includes('video')) enlace.classList.add('video');
+            else if (mime.includes('pdf')) enlace.classList.add('pdf');
+            else if (mime.includes('image')) enlace.classList.add('imagen');
+            else if (mime.includes('audio')) enlace.classList.add('audio');
+
+            subLi.appendChild(enlace);
+          }
+
+          ul.appendChild(subLi);
+        });
+        li.appendChild(ul);
+      } catch (err) {
+        if (cargando.parentNode) li.removeChild(cargando);
+        li.dataset.cargando = 'false';
+        const msgError = document.createElement('span');
+        msgError.className = 'error';
+        msgError.textContent = 'No se pudo cargar el contenido.';
+        li.appendChild(msgError);
+        console.error(err);
+      }
+    }
+
+    function alternarVisibilidad(span) {
+      const li = span.parentNode;
+      const subLista = li.querySelector('ul');
+      if (subLista) {
+        if (subLista.style.display === 'none') {
+          subLista.style.display = 'block';
+          span.classList.add('abierta');
+        } else {
+          subLista.style.display = 'none';
+          span.classList.remove('abierta');
+        }
+      }
+    }
+  </script>
+
 </body>
 </html>
